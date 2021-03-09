@@ -1,7 +1,7 @@
 extends Steam
 
 var MODLOADER_VERSION = "0.0.1 (CRAPPY INITIAL RELEASE)"
-var MODS = {}
+var MODS = []
 
 func mod_log(s: String):
 	var logfile = File.new()
@@ -76,15 +76,13 @@ func initMods() -> Array:
 			var fname = dir.get_next()
 			while fname != "":
 				if dir.current_is_dir():
-					dir.change_dir(fname)
 					var cur_dir = dir.get_current_dir()
-					var mod = load_mod(cur_dir)
+					var mod = load_mod(dir.get_current_dir() + "/" + fname)
 					if mod.has("name"):
 						mods.append(mod)
 						mod_log("[Mod Loader] Finished loading mod " + mod["name"] + " by " + mod["author"])
 				fname = dir.get_next()
 	return mods
-					
 
 func _init():
 	MODS = initMods()
