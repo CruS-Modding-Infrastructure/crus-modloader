@@ -1,5 +1,7 @@
 # CRUELTY SQUAD MOD LOADER
 
+**To load custom maps install the [CruS Mod Base](https://github.com/crustyrashky/crus-modbase) mod**
+
 ## Install the loader
 
 1. Download the [latest release](https://github.com/crustyrashky/crus-modloader/releases/download/0.1.0/crus-modloader-0.1.0.zip)
@@ -22,8 +24,6 @@
 ## Uninstall mods
 
 1. Remove mod folder from `%appdata%\Godot\app_userdata\Cruelty Squad\mods`
-
-
 
 ## Credits
 
