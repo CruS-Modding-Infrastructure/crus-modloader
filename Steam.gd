@@ -1,17 +1,19 @@
 extends Steam
 
-var MODLOADER_VERSION = "0.0.1 (CRAPPY INITIAL RELEASE)"
+var MODLOADER_VERSION = "0.1.0"
 var MODS = []
+var MOD_DATA = {}
+var init_scripts = []
 
-func mod_log(s: String):
+func mod_log(s: String, n=""):
 	var logfile = File.new()
 	var dir = Directory.new()
 	if !dir.dir_exists('user://logs'):
 		dir.make_dir('user://logs')
 	if logfile.open("user://logs/mods.log", File.READ_WRITE) == OK:
-		print(s)
+		#print((("[" + n + "] ") if n != "" else "") + s)
 		logfile.seek_end()
-		logfile.store_line(s)
+		logfile.store_line((("[" + n + "] ") if n != "" else "") + s)
 		logfile.close()
 	
 func is_valid_mod_json(m: Dictionary) -> bool:
@@ -45,6 +47,7 @@ func load_mod(path: String) -> Dictionary:
 					mod_log("[Mod Loader] ERROR: JSON is not an object (not enclosed in {}) for mod.json in " + path)
 				elif !is_valid_mod_json(mod.result):
 					mod_log("[Mod Loader] ERROR: Missing name, author, version and/or description for mod.json in " + path)
+			json.close()
 		fname = dir.get_next()
 	if json_valid:
 		for f in files:
@@ -53,11 +56,20 @@ func load_mod(path: String) -> Dictionary:
 				mod_log("...loaded " + f)
 				loaded_count += 1
 			else: mod_log("...failed to load " + f)
-	if loaded_count == 0:
-		mod_log("[Mod Loader] ERROR: No mod files found!")
-	return mod.result if loaded_count > 0 else {}
+		var init_path = mod.result.get("init")
+		var init_file = File.new()
+		if init_path and (init_file.open(init_path, File.READ) == OK or ResourceLoader.exists(init_path)):
+			init_scripts.append({"mod": mod.result, "script": load(init_path)})
+			mod_log("...init script at " + init_path)
+			init_file.close()
+		if loaded_count == 0:
+			mod_log("[Mod Loader] ERROR: No .zip/.pck files found!")
+		return mod.result if loaded_count > 0 else {}
+	else:
+		mod_log("[Mod Loader] ERROR: No mod.json file found!")
+		return {}
 
-func initMods() -> Array:
+func init_mods() -> Array:
 	# TODO: generate and respect load order cfg
 	var mods = []
 	var dir = Directory.new()
@@ -80,14 +92,29 @@ func initMods() -> Array:
 					var mod = load_mod(dir.get_current_dir() + "/" + fname)
 					if mod.has("name"):
 						mods.append(mod)
-						mod_log("[Mod Loader] Finished loading mod " + mod["name"] + " by " + mod["author"])
+						MOD_DATA[mod["name"]] = {}
+						mod_log("[Mod Loader] Finished loading mod \"" + mod["name"] + "\" by \"" + mod["author"] + "\"")
+					else:
+						mod_log("[Mod Loader] Couldn't load mod!")
 				fname = dir.get_next()
 	return mods
 
 func _init():
-	MODS = initMods()
-	mod_log("[Mod Loader] ALL MOD LOADING COMPLETE: successfully loaded " + str(MODS.size()) + " mod(s)")
+	MODS = init_mods()
 	steamInit()
 
 func _ready():
-	pass
+	var text_base = "CRUELTY SQUAD MOD LOADER " + MODLOADER_VERSION + "\n"
+	var modtext = Label.new()
+	modtext.text = text_base + "Loading mods..."
+	modtext.align = Label.ALIGN_RIGHT
+	Global.get_node("Loading_Screen").add_child(modtext)
+	if init_scripts.size() > 0:
+		mod_log("[Mod Loader] Executing init scripts...")
+		var i = 1
+		for entry in init_scripts:
+			mod_log("[Mod Loader] Initializing \"" + entry["mod"]["name"] + str("\" (", i, "/", init_scripts.size(), ")"))
+			modtext.text = str(text_base, "Initializing (", i, "/", init_scripts.size(), ")")
+			entry["script"].new()
+	mod_log("[Mod Loader] MOD LOADING COMPLETE: successfully loaded " + str(MODS.size()) + " mod(s)")
+	modtext.text = ""
