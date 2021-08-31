@@ -260,7 +260,6 @@ func _ready():
 		for mod in init_scripts.keys():
 			var scr = init_scripts[mod]
 			var mod_node = get_node(mod)
-			register_mod(scr, mod_node)
 			var inst = Node.new()
 			inst.name = "Init"
 			mod_node.add_child(inst)
@@ -269,21 +268,7 @@ func _ready():
 			inits += 1
 		mod_log("MOD LOADING COMPLETE: Successfully loaded " + str(loads) + " mod(s)", "Mod Loader")
 
-# Links the class_name in an init script to the mod's node
-# For example, the node of a mod with init script class_name TestNode
-# can be accessed by calling Mod.get_mod(TestMod) after registration
-func register_mod(mod_class, parent_node):
-	mod_dict[mod_class] = parent_node
-
 # Utility functions
-
-# Shorter alternative to Mod.get_node("name of mod") for mods
-# with a registered class_name
-func get_mod(mod_class):
-	if !(mod_class in mod_dict):
-		mod_log("CRITICAL ERROR: Tried to access nonexistent class (script of class: " + mod_class.get_path() + ")", "Mod Loader")
-		get_tree().quit()
-	return mod_dict[mod_class]
 
 func mod_log(s: String, mod):
 	var logfile = File.new()
