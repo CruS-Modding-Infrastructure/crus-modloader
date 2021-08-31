@@ -1,1 +1,2 @@
-.\godotpcktool .\crueltysquad.pck -a a Steam.gdc
+.\godotpcktool .\crueltysquad.pck -a a modloader.gdc
+pause
