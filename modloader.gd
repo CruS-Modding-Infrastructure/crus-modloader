@@ -1,12 +1,11 @@
 extends Node
 
-var MODLOADER_VERSION = "0.2.0"
+var MODLOADER_VERSION = "0.2.1"
 var MODS = []
 var MOD_INFO = {}
 
 var init_scripts = {}
-var mod_deps = {} # mod name => names of mods that depend on them
-var mod_dict = {}
+var mod_dep_names = {} # mod name => names of mods that depend on them
 var loads = 0
 var inits = 0
 var quit_game = false
@@ -19,6 +18,7 @@ class ModNode extends Node:
 	var data = {}
 	var packs = []
 	var modpath: String
+	var priority: float
 	var loaded = false
 	var initialized = false
 	func _init(info: Dictionary):
@@ -26,9 +26,10 @@ class ModNode extends Node:
 		self.author = info["author"]
 		self.version = info["version"]
 		self.description = info["description"]
-		self.dependencies = info["dependencies"] if info.has("dependencies") else []
+		self.dependencies = info["dependencies"] if "dependencies" in info else []
 		self.packs = info["packs"]
 		self.modpath = info["modpath"]
+		self.priority = float(info["priority"]) if "priority" in info else -1
 	
 func load_mod_json(path):
 	var json = File.new()
@@ -58,6 +59,8 @@ func check_mod_json(m: Dictionary) -> Array:
 		errs.append('Property "dependencies" must be an array of mod name strings')
 	if m.has("dependencies") and m.name in m.dependencies:
 		errs.append('Mod includes itself in its dependencies')
+	if m.has("priority") and (!(m.priority is float) or m.priority < 0):
+		errs.append('Property "priority" must be a number > 0')
 	return errs
 
 # Gets mod metadata from folder
@@ -103,6 +106,8 @@ func load_mod_data(mod: ModNode):
 		else: 
 			mod_log("...failed to load " + p, "Mod Loader")
 			bad_packs.append(p)
+	if bad_packs.empty():
+		mod.loaded = true
 	return bad_packs
 
 # Prepares metadata of mods in user://mods before loading actual data
@@ -135,10 +140,10 @@ func init_mods() -> Array:
 						MOD_INFO[mod["name"]] = mod
 						if mod.has("dependencies"):
 							for dep in mod["dependencies"]:
-								if !mod_deps.has(dep):
-									mod_deps[dep] = [mod["name"]]
+								if !mod_dep_names.has(dep):
+									mod_dep_names[dep] = [mod["name"]]
 								else:
-									mod_deps[dep].append(mod["name"])
+									mod_dep_names[dep].append(mod["name"])
 						mod_log('...found mod "' + mod["name"] + '" by "' + mod["author"] + '"', "Mod Loader")
 					elif mod.has("error"):
 						var err_list = mod.get("error_list") if "error_list" in mod else []
@@ -152,13 +157,47 @@ func init_mods() -> Array:
 			dir.list_dir_end()
 	return sort_mods_list(mods)
 
-# Topological sort for putting dependencies first
 func sort_mods_list(mods: Array):
 	var mods_new = []
 	var mods_tmp = []
+	
+	# Topological sort for putting dependencies first
 	for mod in mods:
 		sort_mod(mod, mods_new, mods_tmp)
-	return mods_new
+	
+	# Sort list again by priority
+	# The lower the priority the earlier the mod loads down to 0, -1 means no priority
+	# TODO: maybe further priority tiebreakers like mod size, mod name alphanumeric order
+	var priorities = {}
+	for mod in mods_new:
+		if !(mod.name in priorities):
+			priorities[mod.name] = float(mod.priority) if "priority" in mod else -1
+		if mod.name in mod_dep_names:
+			for m in mod_dep_names[mod.name]:
+				if m in priorities:
+					# bump priority if a mod is somehow prioritized after a mod that depends on it
+					if priorities[m] >= 0 and priorities[m] < priorities[mod.name]:
+						priorities[mod.name] = priorities[m]
+	var priority_lists = {}
+	for mod in mods_new:
+		var pri = priorities[mod.name]
+		mod.priority = pri
+		if pri in priority_lists:
+			priority_lists[pri].append(mod)
+		else:
+			priority_lists[pri] = [mod]
+	
+	var pri_arr = priority_lists.keys()
+	pri_arr.sort()
+	var mod_list = []
+	for i in pri_arr:
+		if i == -1:
+			continue
+		mod_list.append_array(priority_lists[i])
+	if -1 in priority_lists:
+		mod_list.append_array(priority_lists[-1])
+	
+	return mod_list
 
 func sort_mod(mod: Dictionary, mods_new: Array, mods_tmp: Array):
 	if mods_new.has(mod):
@@ -170,8 +209,8 @@ func sort_mod(mod: Dictionary, mods_new: Array, mods_tmp: Array):
 		return
 	
 	mods_tmp.append(mod)
-	if mod_deps.get(mod["name"]):
-		for m in mod_deps.get(mod["name"]):
+	if mod_dep_names.get(mod["name"]):
+		for m in mod_dep_names.get(mod["name"]):
 			sort_mod(MOD_INFO[m], mods_new, mods_tmp)
 	
 	mods_tmp.remove(mods_tmp.find(mod))
@@ -203,7 +242,7 @@ func _init():
 	for m in MODS:
 		mod_names.append(m.name)
 	var missing_dep_names = []
-	for key in mod_deps.keys():
+	for key in mod_dep_names.keys():
 		if !(key in mod_names):
 			missing_dep_names.append(key)
 	if !missing_dep_names.empty():
@@ -214,14 +253,14 @@ func _init():
 		mod_log("CRITICAL ERROR: missing mod dependencies", "Mod Loader")
 		mod_log("Missing mods:", "Mod Loader")
 		for m in missing_dep_names:
-			mod_log("- " + m + " (required by: " + str(mod_deps[m]) + ")", "Mod Loader")
+			mod_log("- " + m + " (required by: " + str(mod_dep_names[m]) + ")", "Mod Loader")
 		quit_game = true
 
 	if !quit_game:
 		# load data packs and prepare init scripts
 		mod_log("Finished scanning for mods, loading mod data...", "Mod Loader")
 		for mod in MODS:
-			mod_log("...loading " + mod["name"] + str('" (', loads + 1, "/", MODS.size(), ")"), "Mod Loader")
+			mod_log("...loading \"" + mod["name"] + str('" (', loads + 1, "/", MODS.size(), ")"), "Mod Loader")
 			var n = ModNode.new(mod)
 			var bad_files = load_mod_data(n)
 			if mod["name"] in init_scripts.keys():
@@ -233,6 +272,8 @@ func _init():
 						mod_log("...init script at " + init_path, "Mod Loader")
 					else:
 						mod = {"error": "Init script failed to load"}
+			else:
+				n.initialized = true
 			if bad_files.empty() and !mod.has("error"):
 				add_child(n)
 				loads += 1
