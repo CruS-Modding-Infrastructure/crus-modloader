@@ -19,7 +19,7 @@
 
 1. Drag/extract mod folder into `%appdata%\Godot\app_userdata\Cruelty Squad\mods`
 2. Launch the game
-3. If it didn't work make a new GitHub issue with the contents of `%appdata%\Godot\app_userdata\Cruelty Squad\logs\mods.log`
+3. If it didn't work post to #modifications in the discord with the contents of `%appdata%\Godot\app_userdata\Cruelty Squad\logs\mods.log`
 
 ## Uninstall mods
 
