@@ -4,7 +4,7 @@
 
 ## Install the loader
 
-1. Download the [latest release](https://github.com/disco0/crus-modloader/releases/download/v0.2.2-beta/crus-modloader-v0.2.2b.zip)
+1. Download the [latest release](https://github.com/CruS-Modding-Infrastructure/crus-modloader/releases)
 2. Extract the contents of the zip into your Cruelty Squad game folder (the one Steam installed to, not the one in step 4)
 3. Run `install_modloader.bat`
 4. Start the game, if you now have a `mods` folder under `%appdata%\Godot\app_userdata\Cruelty Squad\` it worked
