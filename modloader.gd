@@ -679,13 +679,16 @@ func add_menu_version():
 	margin.add_constant_override("margin_bottom", 75)
 	margin.set_size(Vector2(1280,720))
 	margin.name = "ModLoaderVersion"
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var vBox = VBoxContainer.new()
 	vBox.alignment = VBoxContainer.ALIGN_END
+	vBox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	var versionLabel = Label.new()
 	versionLabel.text = "Modloader v" + MODLOADER_VERSION + "\nLoaded mods: " + str(loads)
 	versionLabel.theme = load("res://Menu/menu_theme.tres")
+	versionLabel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	vBox.add_child(versionLabel)
 	margin.add_child(vBox)
