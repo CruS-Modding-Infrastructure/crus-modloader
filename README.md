@@ -1,6 +1,6 @@
 # CRUELTY SQUAD MOD LOADER
 
-**To load custom maps install the [CruS Mod Base](https://github.com/crustyrashky/crus-modbase) mod**
+**IMPORTANT: To load custom maps and to have an in game UI for mod info install the [CruS Mod Base](https://github.com/crustyrashky/crus-modbase) mod**
 
 ## Install the loader
 
