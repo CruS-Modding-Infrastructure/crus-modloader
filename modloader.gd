@@ -5,7 +5,7 @@ signal modloading_complete()
 signal modloading_failed()
 signal modloading_end()
 
-var MODLOADER_VERSION = "0.2.3"
+var MODLOADER_VERSION = "0.2.4"
 var MODS = []
 var MOD_INFO = {}
 
@@ -16,7 +16,6 @@ var inits = 0
 var quit_game = false
 
 class ModNode extends Node:
-	var disabled = false
 	
 	var author: String
 	var version: String
@@ -30,8 +29,6 @@ class ModNode extends Node:
 	var initialized = false
 	
 	func _init(info: Dictionary):
-		self.disabled = bool(info["disabled"]) if "disabled" in info else false
-		
 		self.name = info["name"]
 		self.author = info["author"]
 		self.version = info["version"]
@@ -119,16 +116,15 @@ func load_mod_info(path: String) -> Dictionary:
 # Loads mod data packs i.e. zip/pck files into the game
 func load_mod_data(mod: ModNode):
 	var bad_packs = []
-	if mod.disabled != true:
-		for p in mod.packs:
-			var loaded = ProjectSettings.load_resource_pack(p)
-			if loaded:
-				mod_log("   ✅ Loaded " + path_wrap(p), "Mod Loader")
-			else:
-				mod_log("   ❌ Failed to load " + path_wrap(p), "Mod Loader")
-				bad_packs.append(p)
-		if bad_packs.empty():
-			mod.loaded = true
+	for p in mod.packs:
+		var loaded = ProjectSettings.load_resource_pack(p)
+		if loaded:
+			mod_log("   ✅ Loaded " + path_wrap(p), "Mod Loader")
+		else:
+			mod_log("   ❌ Failed to load " + path_wrap(p), "Mod Loader")
+			bad_packs.append(p)
+	if bad_packs.empty():
+		mod.loaded = true
 	return bad_packs
 
 static func get_mod_index_by_name(name: String, mods: Array) -> int:
@@ -362,7 +358,42 @@ func dump_fgd(fgd_scene_path: String) -> void:
 	mod_log('Dumping %s file to user://' % [ fgd_path.get_file() ], 'modloader:dump_fgd')
 	dump_string_to_file(fgd_def.build_class_text(), 'qodot.fgd', 'user://')
 
+
+const ENABLED_MODS_FILE_PATH:String = "user://enabled_mods.json"
+var enabled_mods = {}
+var disabled_mod_count = 0
+
+func save_enabled_mods() -> void:
+	var file:File = File.new()
+	if file.open(ENABLED_MODS_FILE_PATH, File.WRITE) == OK:
+		var json = JSON.print(enabled_mods)
+		file.store_line(json)
+		file.close()
+		print("Saved enabled mods")
+	else:
+		print("Failed to write enabled mods to " + ENABLED_MODS_FILE_PATH)
+
+func load_enabled_mods(file_path: String) -> Dictionary:
+	var file = File.new()
+	if file.open(file_path, File.READ) == OK:
+		var json = file.get_as_text()
+		var result = JSON.parse(json)
+		file.close()
+		
+		if result.error == OK:
+			print("Loaded enabled mods.")
+			return result.result
+		else:
+			print("Failed to parse enabled mods")
+			return {}
+	else:
+		print("Failed to open enabled mods file from " + ENABLED_MODS_FILE_PATH)
+		return {}
+
 func _init():
+	connect("modloading_complete", self, "save_enabled_mods")
+	enabled_mods = load_enabled_mods(ENABLED_MODS_FILE_PATH)
+	
 	var config = ConfigFile.new()
 	var dir = Directory.new()
 	var err = config.load("user://modloader.cfg")
@@ -425,48 +456,58 @@ func _init():
 		# load data packs and prepare init scripts
 		mod_log("Finished scanning for mods, loading mod data...", "Mod Loader")
 		var mod_count = 0
+		
 		for mod in MODS:
 			mod_count += 1
 			mod_log(" -> Loading \"" + mod["name"] + str('" (', mod_count, "/", MODS.size(), ")"), "Mod Loader")
-			var n = ModNode.new(mod)
-			var bad_files = load_mod_data(n)
-			if n.disabled:
-				mod_log("   - Mod disabled by config", "Mod Loader")
-				if mod["name"] in init_scripts.keys():
-					init_scripts.erase(mod["name"])
+			
+			var disabled:bool = false
+			
+			if enabled_mods.has(mod["name"]):
+				if not enabled_mods[mod["name"]]:
+					mod_log("   - Mod disabled by config", "Mod Loader")
+					if mod["name"] in init_scripts.keys():
+						init_scripts.erase(mod["name"])
+					disabled = true
+					disabled_mod_count += 1
 			else:
-				if mod["name"] in init_scripts.keys():
-					var init_path = init_scripts[mod["name"]]
-					if init_path:
-						mod_log("   - Init script at %s" % [ path_wrap(init_path) ], "Mod Loader")
-						if ResourceLoader.exists(init_path):
-							var scr = ResourceLoader.load(init_path)
-							if scr:
-								init_scripts[mod["name"]] = scr
-							else:
-								mod = {"error": "Init script failed to load"}
+				enabled_mods[mod["name"]] = true
+				
+			var n = ModNode.new(mod)
+			var bad_files = [] if disabled else load_mod_data(n)
+
+			if mod["name"] in init_scripts.keys():
+				var init_path = init_scripts[mod["name"]]
+				if init_path:
+					mod_log("   - Init script at %s" % [ path_wrap(init_path) ], "Mod Loader")
+					if ResourceLoader.exists(init_path):
+						var scr = ResourceLoader.load(init_path)
+						if scr:
+							init_scripts[mod["name"]] = scr
 						else:
-							mod = {"error": "Init script not found at declared path."}
-							mod_log("   - ? Init script not found at declared path.", "Mod Loader")
-				else:
-					n.initialized = true
-				if bad_files.empty() and !mod.has("error"):
-					add_child(n)
-					loads += 1
-				elif bad_files.size > 0:
-					OS.alert('Failed to start game because mod "' + mod.name + '" couldn\'t fully load. Check %appdata%\\Godot\\app_userdata\\Cruelty Squad\\logs\\mods.log for more information.', 'CruS Mod Loader')
-					mod_log('CRITICAL ERROR: "' + mod.name + '" failed to load the following files:', "Mod Loader")
-					for bf in bad_files:
-						mod_log('	- ' + path_wrap(bf), "Mod Loader")
-					emit_signal("modloading_failed")
-					quit_game = true
-					return
-				elif mod.has("error"):
-					OS.alert('Failed to start game because mod "' + mod.name + '" couldn\'t fully load. Check %appdata%\\Godot\\app_userdata\\Cruelty Squad\\logs\\mods.log for more information.', 'CruS Mod Loader')
-					mod_log('CRITICAL ERROR: couldn\'t load the init script for "' + mod.name + '".', "Mod Loader")
-					quit_game = true
-					emit_signal("modloading_failed")
-					return
+							mod = {"error": "Init script failed to load"}
+					else:
+						mod = {"error": "Init script not found at declared path."}
+						mod_log("   - ? Init script not found at declared path.", "Mod Loader")
+			else:
+				n.initialized = true
+			if bad_files.empty() and !mod.has("error"):
+				add_child(n)
+				loads += 1
+			elif bad_files.size > 0:
+				OS.alert('Failed to start game because mod "' + mod.name + '" couldn\'t fully load. Check %appdata%\\Godot\\app_userdata\\Cruelty Squad\\logs\\mods.log for more information.', 'CruS Mod Loader')
+				mod_log('CRITICAL ERROR: "' + mod.name + '" failed to load the following files:', "Mod Loader")
+				for bf in bad_files:
+					mod_log('	- ' + path_wrap(bf), "Mod Loader")
+				emit_signal("modloading_failed")
+				quit_game = true
+				return
+			elif mod.has("error"):
+				OS.alert('Failed to start game because mod "' + mod.name + '" couldn\'t fully load. Check %appdata%\\Godot\\app_userdata\\Cruelty Squad\\logs\\mods.log for more information.', 'CruS Mod Loader')
+				mod_log('CRITICAL ERROR: couldn\'t load the init script for "' + mod.name + '".', "Mod Loader")
+				quit_game = true
+				emit_signal("modloading_failed")
+				return
 
 func _enter_tree():
 	if quit_game:
@@ -686,7 +727,7 @@ func add_menu_version():
 	vBox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	var versionLabel = Label.new()
-	versionLabel.text = "Modloader v" + MODLOADER_VERSION + "\nLoaded mods: " + str(loads)
+	versionLabel.text = "Modloader v" + MODLOADER_VERSION + "\nLoaded mods: " + str(loads - disabled_mod_count) + "/" + str(loads)
 	versionLabel.theme = load("res://Menu/menu_theme.tres")
 	versionLabel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
