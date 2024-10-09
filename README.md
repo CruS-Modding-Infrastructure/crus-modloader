@@ -27,6 +27,6 @@
 
 ## Credits
 
-Made for https://store.steampowered.com/app/1388770/Cruelty_Squad/
+Made for [Cruelty Squad](https://store.steampowered.com/app/1388770/Cruelty_Squad/)
 
-Uses https://github.com/hhyyrylainen/GodotPckTool to install
+Uses [GodotPckTool](https://github.com/hhyyrylainen/GodotPckTool) to install
